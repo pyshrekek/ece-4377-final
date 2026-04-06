@@ -9,7 +9,7 @@ USE  IEEE.STD_LOGIC_UNSIGNED.all;
 ENTITY ball IS
 
 
-   PORT(pixel_row, pixel_column		: IN std_logic_vector(10 DOWNTO 0);
+   PORT(pixel_row, pixel_column		: IN std_logic_vector(9 DOWNTO 0);
         Red,Green,Blue 				: OUT std_logic_vector(7 downto 0);
         Vert_sync	: IN std_logic);
        
@@ -20,10 +20,10 @@ architecture behavior of ball is
 
 			-- Video Display Signals   
 SIGNAL Ball_on, Direction			: std_logic;
-SIGNAL Size 						: std_logic_vector(10 DOWNTO 0);  
-SIGNAL Ball_X_motion 				: std_logic_vector(10 DOWNTO 0);
-SIGNAL Ball_Y_motion 				: std_logic_vector(10 DOWNTO 0);
-SIGNAL Ball_Y_pos, Ball_X_pos		: std_logic_vector(10 DOWNTO 0);
+SIGNAL Size 						: std_logic_vector(9 DOWNTO 0);  
+SIGNAL Ball_X_motion 				: std_logic_vector(9 DOWNTO 0);
+SIGNAL Ball_Y_motion 				: std_logic_vector(9 DOWNTO 0);
+SIGNAL Ball_Y_pos, Ball_X_pos		: std_logic_vector(9 DOWNTO 0);
 
 
 BEGIN           
@@ -55,19 +55,19 @@ BEGIN
 	WAIT UNTIL vert_sync'event and vert_sync = '1';
 	-- Move ball once every vertical sync: Y direction
 			-- Bounce off top or bottom of screen
-			IF ('0' & Ball_Y_pos) >= 768 - Size THEN
-				Ball_Y_motion <= CONV_STD_LOGIC_VECTOR(-2,11);
+			IF ('0' & Ball_Y_pos) >= 480 - Size THEN
+				Ball_Y_motion <= CONV_STD_LOGIC_VECTOR(-2,10);
 			ELSIF Ball_Y_pos <= Size THEN
-				Ball_Y_motion <= CONV_STD_LOGIC_VECTOR(2,11);
+				Ball_Y_motion <= CONV_STD_LOGIC_VECTOR(2,10);
 			END IF;
 			-- Compute next ball Y position
 				Ball_Y_pos <= Ball_Y_pos + Ball_Y_motion;
 	-- Move ball once every vertical sync: X direction
 			-- Bounce off top or bottom of screen
-			IF ('0' & Ball_X_pos) >= 1024 - Size THEN
-				Ball_X_motion <= CONV_STD_LOGIC_VECTOR(-2,11);
+			IF ('0' & Ball_X_pos) >= 640 - Size THEN
+				Ball_X_motion <= CONV_STD_LOGIC_VECTOR(-2,10);
 			ELSIF Ball_X_pos <= Size THEN
-				Ball_X_motion <= CONV_STD_LOGIC_VECTOR(2,11);
+				Ball_X_motion <= CONV_STD_LOGIC_VECTOR(2,10);
 			END IF;
 			-- Compute next ball Y position
 				Ball_X_pos <= Ball_X_pos + Ball_X_motion;

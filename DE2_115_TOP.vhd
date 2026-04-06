@@ -111,13 +111,13 @@ component VGA_SYNC_module
 	red, green, blue : IN STD_LOGIC_VECTOR(7 downto 0);
 			red_out, green_out, blue_out : OUT STD_LOGIC_VECTOR(7 downto 0);
 			horiz_sync_out, vert_sync_out, video_on, pixel_clock	: OUT	STD_LOGIC;
-			pixel_row, pixel_column: OUT STD_LOGIC_VECTOR(10 DOWNTO 0));
+			pixel_row, pixel_column: OUT STD_LOGIC_VECTOR(9 DOWNTO 0));
 
 END COMPONENT;
 
 COMPONENT ball
 
-   PORT(pixel_row, pixel_column		: IN std_logic_vector(10 DOWNTO 0);
+   PORT(pixel_row, pixel_column		: IN std_logic_vector(9 DOWNTO 0);
         Red,Green,Blue 				: OUT std_logic_vector(7 downto 0);
         Vert_sync	: IN std_logic);
        
@@ -134,8 +134,8 @@ SIGNAL video_on_int : STD_LOGIC;
 SIGNAL vert_sync_int : STD_LOGIC;
 SIGNAL horiz_sync_int : STD_LOGIC; 
 SIGNAL pixel_clock_int : STD_LOGIC;
-SIGNAL pixel_row_int :STD_LOGIC_VECTOR(10 DOWNTO 0); 
-SIGNAL pixel_column_int :STD_LOGIC_VECTOR(10 DOWNTO 0); 
+SIGNAL pixel_row_int :STD_LOGIC_VECTOR(9 DOWNTO 0); 
+SIGNAL pixel_column_int :STD_LOGIC_VECTOR(9 DOWNTO 0); 
 
 
 BEGIN

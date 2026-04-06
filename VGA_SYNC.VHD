@@ -9,12 +9,12 @@ ENTITY VGA_SYNC_module IS
 	      red, green, blue : IN STD_LOGIC_VECTOR(7 downto 0);
 			red_out, green_out, blue_out: OUT STD_LOGIC_VECTOR(7 downto 0);
 			horiz_sync_out, vert_sync_out, video_on, pixel_clock: OUT STD_LOGIC;
-			pixel_row, pixel_column: OUT STD_LOGIC_VECTOR(10 DOWNTO 0));
+			pixel_row, pixel_column: OUT STD_LOGIC_VECTOR(9 DOWNTO 0));
 END VGA_SYNC_module;
 ARCHITECTURE a OF VGA_SYNC_module IS
 	SIGNAL horiz_sync, vert_sync, pixel_clock_int : STD_LOGIC;
 	SIGNAL video_on_int, video_on_v, video_on_h : STD_LOGIC;
-	SIGNAL h_count, v_count :STD_LOGIC_VECTOR(10 DOWNTO 0);
+	SIGNAL h_count, v_count :STD_LOGIC_VECTOR(9 DOWNTO 0);
 --
 -- To select a different screen resolution, clock rate, and refresh rate
 -- pick a set of new video timing constant values from table at end of code section
@@ -22,15 +22,15 @@ ARCHITECTURE a OF VGA_SYNC_module IS
 -- adjust PLL frequency output to pixel clock rate from table
 -- using MegaWizard to edit video_PLL.vhd
 -- Horizontal Timing Constants  
-	CONSTANT H_pixels_across: 	Natural := 1024;
-	CONSTANT H_sync_low: 		Natural := 1032;
-	CONSTANT H_sync_high: 		Natural := 1176;
-	CONSTANT H_end_count: 		Natural := 1344;
+	CONSTANT H_pixels_across: 	Natural := 640;
+	CONSTANT H_sync_low: 		Natural := 664;
+	CONSTANT H_sync_high: 		Natural := 760;
+	CONSTANT H_end_count: 		Natural := 800;
 -- Vertical Timing Constants
-	CONSTANT V_pixels_down: 	Natural := 768;
-	CONSTANT V_sync_low: 		Natural := 771;
-	CONSTANT V_sync_high: 		Natural := 777;
-	CONSTANT V_end_count: 		Natural := 806;
+	CONSTANT V_pixels_down: 	Natural := 480;
+	CONSTANT V_sync_low: 		Natural := 491;
+	CONSTANT V_sync_high: 		Natural := 493;
+	CONSTANT V_end_count: 		Natural := 525;
 	COMPONENT video_PLL
 	PORT
 	(
@@ -66,7 +66,7 @@ BEGIN
 --  H_count     0                 #pixels            sync low      end
 --
 	IF (h_count = H_end_count) THEN
-   		h_count <= "00000000000";
+   		h_count <= "0000000000";
 	ELSE
    		h_count <= h_count + 1;
 	END IF;
@@ -84,7 +84,7 @@ BEGIN
 --  V_count         0                        last pixel row      V sync low       end
 --
 	IF (v_count >= V_end_count) AND (h_count >= H_sync_low) THEN
-   		v_count <= "00000000000";
+   		v_count <= "0000000000";
 	ELSIF (h_count = H_sync_low) THEN
    		v_count <= v_count + 1;
 	END IF;
