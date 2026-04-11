@@ -114,18 +114,13 @@ ARCHITECTURE structural OF DE2_115_TOP IS
             horiz_sync_out, vert_sync_out, video_on, pixel_clock : OUT STD_LOGIC;
             pixel_row, pixel_column : OUT STD_LOGIC_VECTOR(9 DOWNTO 0));
     END COMPONENT;
-
-    -- LINE_TEST drives RGB outputs based on pixel position
-    COMPONENT LINE_TEST
-        PORT (
-            pixel_row    : IN  STD_LOGIC_VECTOR(9 DOWNTO 0);
-            pixel_column : IN  STD_LOGIC_VECTOR(9 DOWNTO 0);
-            vert_sync    : IN  STD_LOGIC;
-            Red          : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);
-            Green        : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);
-            Blue         : OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
-        );
-    END COMPONENT;
+	 
+	 COMPONENT CUBE_TEST
+    PORT (
+        pixel_row, pixel_column : IN STD_LOGIC_VECTOR(9 DOWNTO 0);
+        Red, Green, Blue : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);
+        Vert_sync : IN STD_LOGIC);
+END COMPONENT;
 
     SIGNAL red_int         : STD_LOGIC_VECTOR(7 DOWNTO 0);
     SIGNAL green_int       : STD_LOGIC_VECTOR(7 DOWNTO 0);
@@ -165,14 +160,13 @@ BEGIN
         pixel_column   => pixel_column_int
     );
 
-    -- Line renderer — draws a white line across the screen
-    U2 : LINE_TEST PORT MAP (
-        pixel_row    => pixel_row_int,
-        pixel_column => pixel_column_int,
-        vert_sync    => vert_sync_int,
-        Red          => red_int,
-        Green        => green_int,
-        Blue         => blue_int
-    );
-
+    U2 : CUBE_TEST PORT MAP
+(
+    pixel_row => pixel_row_int,
+    pixel_column => pixel_column_int,
+    Red => red_int,
+    Green => green_int,
+    Blue => blue_int,
+    Vert_sync => vert_sync_int
+);
 END structural;
