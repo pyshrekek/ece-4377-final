@@ -25,6 +25,7 @@ simulation
 testbench
 timing
 .qsys_edit
+.github
 
 # ignore Quartus II generated files
 *_generation_script*
