@@ -13,6 +13,7 @@ library ieee;
   use ieee.numeric_std.all;
   use work.graphics_test_utils.all;
   use work.rendering_pipeline.all;
+  use work.sphere_rendering.all;
   use work.define_objects.all;
 
 entity graphics_layer is
@@ -40,6 +41,7 @@ begin
   -- Render all cubes in SCENE with flat shading from SCENE_LIGHT.
   -- Front-to-back priority: index 0 is drawn on top.
   -- Walk back-to-front (highest index first) so index 0 overwrites last.
+  -- Spheres are then composited with the same per-index priority.
   render_proc : process (x, y) is
 
     variable color : color_t;
@@ -52,6 +54,16 @@ begin
     for i in NUM_CUBES - 1 downto 0 loop
 
       hit := render_lit_cube_pixel(x, y, SCENE(i), SCENE_LIGHT);
+
+      if ((hit.r /= x"00") or (hit.g /= x"00") or (hit.b /= x"00")) then
+        color := hit;
+      end if;
+
+    end loop;
+
+    for i in NUM_SPHERES - 1 downto 0 loop
+
+      hit := render_lit_sphere_pixel(x, y, SCENE_SPHERES(i), SCENE_LIGHT);
 
       if ((hit.r /= x"00") or (hit.g /= x"00") or (hit.b /= x"00")) then
         color := hit;

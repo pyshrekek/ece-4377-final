@@ -1114,6 +1114,9 @@ set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 
 set_global_assignment -name VHDL_FILE VGA_SYNC.VHD
 set_global_assignment -name VHDL_FILE GRAPHICS_TEST_UTILS.vhd
+set_global_assignment -name VHDL_FILE RENDERING_PIPELINE.vhd
+set_global_assignment -name VHDL_FILE SPHERE_RENDERING.vhd
+set_global_assignment -name VHDL_FILE DEFINE_OBJECTS.vhd
 set_global_assignment -name VHDL_FILE BALL.VHD
 set_global_assignment -name VHDL_FILE DE2_115_TOP.vhd
 set_global_assignment -name QIP_FILE video_pll.qip

@@ -24,6 +24,7 @@ library ieee;
   use ieee.std_logic_1164.all;
   use work.graphics_test_utils.all;
   use work.rendering_pipeline.all;
+  use work.sphere_rendering.all;
 
 package define_objects is
 
@@ -61,6 +62,19 @@ package define_objects is
 
     -- index 2: small red cube
     2 => (center_x    => 500,              center_y    => 240,              side_length => 100,              color       => (r => x"FF", g => x"00", b => x"00"))
+  );
+
+  -- ── Spheres ──────────────────────────────────────────────
+  -- To add a sphere: increment NUM_SPHERES and append a SCENE_SPHERES entry.
+  -- To hide one:     set radius => 0  (zero-radius = invisible).
+  constant num_spheres : integer := 1;
+
+  type sphere_scene_t is array (0 to NUM_SPHERES - 1) of sphere_t;
+
+  constant scene_spheres : sphere_scene_t :=
+  (
+    -- index 0: green sphere, near center-right
+    0 => (center_x => 360, center_y => 290, radius => 65, color => (r => x"40", g => x"FF", b => x"40"))
   );
 
 end package define_objects;
