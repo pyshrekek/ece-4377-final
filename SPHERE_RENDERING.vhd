@@ -21,15 +21,36 @@ package sphere_rendering is
     color    : color_t;
   end record;
 
+  function int_sqrt(n : integer) return integer;
+
   function render_lit_sphere_pixel(
     x, y   : integer;
     sphere : sphere_t;
     light  : light_t
   ) return color_t;
 
+  function render_wireframe_sphere_pixel(
+    x, y      : integer;
+    sphere    : sphere_t;
+    thickness : integer
+  ) return color_t;
+
 end package sphere_rendering;
 
 package body sphere_rendering is
+
+  function div_round_signed(num, den : integer) return integer is
+  begin
+    if den = 0 then
+      return 0;
+    end if;
+
+    if num >= 0 then
+      return (num + (den / 2)) / den;
+    else
+      return -(((-num) + (den / 2)) / den);
+    end if;
+  end function;
 
   function clamp_u8(v : integer) return integer is
   begin
@@ -37,6 +58,14 @@ package body sphere_rendering is
       return 0;
     elsif v > 255 then
       return 255;
+    end if;
+    return v;
+  end function;
+
+  function abs_int(v : integer) return integer is
+  begin
+    if v < 0 then
+      return -v;
     end if;
     return v;
   end function;
@@ -50,29 +79,56 @@ package body sphere_rendering is
     variable base_r : integer;
     variable base_g : integer;
     variable base_b : integer;
+    variable shade  : integer;
   begin
     base_r := to_integer(unsigned(base_color.r));
     base_g := to_integer(unsigned(base_color.g));
     base_b := to_integer(unsigned(base_color.b));
+    shade := clamp_u8(shade_q8);
 
     return (
-      r => to_slv8((base_r * shade_q8) / 255),
-      g => to_slv8((base_g * shade_q8) / 255),
-      b => to_slv8((base_b * shade_q8) / 255)
+      -- /256 keeps this path to shifts/adds in synthesis.
+      r => to_slv8((base_r * shade + 128) / 256),
+      g => to_slv8((base_g * shade + 128) / 256),
+      b => to_slv8((base_b * shade + 128) / 256)
     );
   end function;
 
   function int_sqrt(n : integer) return integer is
-    variable r : integer := 0;
+    variable val : unsigned(31 downto 0);
+    variable res : unsigned(31 downto 0) := (others => '0');
+    variable bit : unsigned(31 downto 0) := to_unsigned(1073741824, 32); -- 1 << 30
   begin
     if n <= 0 then
       return 0;
     end if;
 
-    while ((r + 1) * (r + 1)) <= n loop
-      r := r + 1;
+    val := to_unsigned(n, 32);
+
+    -- Find the highest power-of-4 <= val.
+    for i in 0 to 15 loop
+      if bit > val then
+        bit := shift_right(bit, 2);
+      end if;
     end loop;
-    return r;
+
+    -- Restoring integer sqrt: fixed maximum of 16 iterations for 32-bit input.
+    for i in 0 to 15 loop
+      if bit = 0 then
+        exit;
+      end if;
+
+      if val >= (res + bit) then
+        val := val - (res + bit);
+        res := shift_right(res, 1) + bit;
+      else
+        res := shift_right(res, 1);
+      end if;
+
+      bit := shift_right(bit, 2);
+    end loop;
+
+    return to_integer(res);
   end function;
 
   function render_lit_sphere_pixel(
@@ -80,16 +136,17 @@ package body sphere_rendering is
     sphere : sphere_t;
     light  : light_t
   ) return color_t is
-    variable dx      : integer;
-    variable dy      : integer;
-    variable radius2 : integer;
-    variable dist2   : integer;
-    variable z       : integer;
-    variable nx_q8   : integer;
-    variable ny_q8   : integer;
-    variable nz_q8   : integer;
-    variable dot_q8  : integer;
-    variable shade   : integer;
+    variable dx        : integer;
+    variable dy        : integer;
+    variable adx       : integer;
+    variable ady       : integer;
+    variable radius2   : integer;
+    variable dist2     : integer;
+    variable z_approx  : integer;
+    variable dot_num   : integer;
+    variable dot_q8    : integer;
+    variable diff_term : integer;
+    variable shade     : integer;
   begin
     if sphere.radius <= 0 then
       return TRANSPARENT;
@@ -104,19 +161,79 @@ package body sphere_rendering is
       return TRANSPARENT;
     end if;
 
-    z := int_sqrt(radius2 - dist2);
-
-    nx_q8 := (dx * 255) / sphere.radius;
-    ny_q8 := (dy * 255) / sphere.radius;
-    nz_q8 := (z * 255) / sphere.radius;
-
-    dot_q8 := ((nx_q8 * light.x_q8) + (ny_q8 * light.y_q8) + (nz_q8 * light.z_q8)) / 255;
-    if dot_q8 < 0 then
-      dot_q8 := 0;
+    -- Fast hemisphere depth approximation (no sqrt/divide by variable).
+    adx := abs_int(dx);
+    ady := abs_int(dy);
+    z_approx := sphere.radius - ((adx + ady) / 2);
+    if z_approx < 0 then
+      z_approx := 0;
     end if;
 
-    shade := light.ambient_q8 + ((dot_q8 * light.diffuse_q8) / 255);
+    -- Approximate N · L in a timing-friendly way for pixel-rate combinational logic.
+    dot_num := (dx * light.x_q8) + (dy * light.y_q8) + (z_approx * light.z_q8);
+    if dot_num < 0 then
+      dot_q8 := 0;
+    else
+      if sphere.radius <= 32 then
+        dot_q8 := dot_num / 32;
+      elsif sphere.radius <= 64 then
+        dot_q8 := dot_num / 64;
+      elsif sphere.radius <= 128 then
+        dot_q8 := dot_num / 128;
+      else
+        dot_q8 := dot_num / 256;
+      end if;
+
+      if dot_q8 < 0 then
+        dot_q8 := 0;
+      elsif dot_q8 > 255 then
+        dot_q8 := 255;
+      end if;
+    end if;
+
+    diff_term := (dot_q8 * light.diffuse_q8 + 128) / 256;
+    shade := light.ambient_q8 + diff_term;
     return scale_color(sphere.color, clamp_u8(shade));
+  end function;
+
+  function render_wireframe_sphere_pixel(
+    x, y      : integer;
+    sphere    : sphere_t;
+    thickness : integer
+  ) return color_t is
+    variable dx        : integer;
+    variable dy        : integer;
+    variable radius2   : integer;
+    variable dist2     : integer;
+    variable ring_dist : integer;
+    variable ring_span : integer;
+    variable t         : integer;
+  begin
+    if sphere.radius <= 0 then
+      return TRANSPARENT;
+    end if;
+
+    dx := x - sphere.center_x;
+    dy := y - sphere.center_y;
+    radius2 := sphere.radius * sphere.radius;
+    dist2 := dx * dx + dy * dy;
+
+    if thickness < 1 then
+      t := 1;
+    else
+      t := thickness;
+    end if;
+
+    -- Approximate |sqrt(dist2) - radius| <= t without sqrt:
+    -- |dist2 - radius^2| <= 2 * radius * t
+    ring_dist := abs_int(dist2 - radius2);
+    ring_span := 2 * sphere.radius * t;
+
+    if ring_dist <= ring_span then
+      return sphere.color;
+    end if;
+
+    return TRANSPARENT;
   end function;
 
 end package body sphere_rendering;

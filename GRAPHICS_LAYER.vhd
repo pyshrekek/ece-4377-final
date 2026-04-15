@@ -62,9 +62,13 @@ begin
     end loop;
 
     for i in NUM_SPHERES - 1 downto 0 loop
-
-      hit := render_lit_sphere_pixel(x, y, SCENE_SPHERES(i), SCENE_LIGHT);
-
+ 
+      if SPHERE_WIREFRAME_MODE then
+        hit := render_wireframe_sphere_pixel(x, y, SCENE_SPHERES(i), 2);
+      else
+        hit := render_lit_sphere_pixel(x, y, SCENE_SPHERES(i), SCENE_LIGHT);
+      end if;
+ 
       if ((hit.r /= x"00") or (hit.g /= x"00") or (hit.b /= x"00")) then
         color := hit;
       end if;

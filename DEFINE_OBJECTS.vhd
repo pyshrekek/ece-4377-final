@@ -29,15 +29,16 @@ library ieee;
 package define_objects is
 
   -- ── Light ────────────────────────────────────────────────
-  -- Direction roughly upper-left-front; change x/y/z_q8 to
-  -- move the light source.
+  -- Direction roughly upper-left-front; Q8 unit vector (magnitude ~256).
+  -- Original (160, 110, 220) was unnormalized (mag ~293.5).
+  -- Normalized: divide by 293.5 then scale by 256: (139, 96, 191)
   constant scene_light : light_t :=
   (
-    x_q8       => 160,
-    y_q8       => 110,
-    z_q8       => 220,
-    ambient_q8 => 48,
-    diffuse_q8 => 192
+    x_q8       => 139,
+    y_q8       => 96,
+    z_q8       => 191,
+    ambient_q8 => 88,
+    diffuse_q8 => 224
   );
 
   constant background_color : color_t :=
@@ -48,23 +49,22 @@ package define_objects is
   );
 
   -- ── Cubes ────────────────────────────────────────────────
-  constant num_cubes : INTEGER := 3;
+  -- Debug mode: keep one entry but make it invisible.
+  constant num_cubes : INTEGER := 1;
 
   type scene_t is array (0 to NUM_CUBES - 1) of cube_t;
 
   constant scene : scene_t :=
   (
-    -- index 0: large white cube, left-center (highest priority)
-    0 => (center_x    => 280,              center_y    => 240,              side_length => 160,              color       => (r => x"FF", g => x"FF", b => x"FF")),
-
-    -- index 1: medium cyan cube
-    1 => (center_x    => 460,              center_y    => 240,              side_length => 120,              color       => (r => x"00", g => x"FF", b => x"FF")),
-
-    -- index 2: small red cube
-    2 => (center_x    => 500,              center_y    => 240,              side_length => 100,              color       => (r => x"FF", g => x"00", b => x"00"))
+    0 => (center_x    => 400,                center_y    => 300,                side_length => 40,                color       => (r => x"A0", g => x"00", b => x"00"))
   );
 
   -- ── Spheres ──────────────────────────────────────────────
+  -- Debug rendering switch:
+  --   true  => draw spheres as wireframe rings
+  --   false => draw fully lit/shaded spheres
+  constant sphere_wireframe_mode : boolean := false;
+
   -- To add a sphere: increment NUM_SPHERES and append a SCENE_SPHERES entry.
   -- To hide one:     set radius => 0  (zero-radius = invisible).
   constant num_spheres : integer := 1;
@@ -74,7 +74,7 @@ package define_objects is
   constant scene_spheres : sphere_scene_t :=
   (
     -- index 0: green sphere, near center-right
-    0 => (center_x => 360, center_y => 290, radius => 65, color => (r => x"40", g => x"FF", b => x"40"))
+    0 => (center_x => 300, center_y => 200, radius => 100, color => (r => x"40", g => x"FF", b => x"40"))
   );
 
 end package define_objects;
