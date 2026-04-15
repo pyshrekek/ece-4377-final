@@ -40,10 +40,10 @@ begin
   x <= to_integer(unsigned(pixel_column));
   y <= to_integer(unsigned(pixel_row));
 
-  -- Render all cubes in SCENE with flat shading from SCENE_LIGHT.
-  -- Front-to-back priority: index 0 is drawn on top.
-  -- Walk back-to-front (highest index first) so index 0 overwrites last.
-  -- Spheres are then composited with the same per-index priority.
+  -- Render order controls layering:
+  --   background -> spheres -> cubes
+  -- so cube eyes sit on top of the face sphere.
+  -- Within each object type, index 0 has top priority.
   render_proc : process (x, y, show_sphere, show_cube) is
 
     variable color : color_t;
@@ -53,18 +53,6 @@ begin
 
     color := BACKGROUND_COLOR;
 
-    if show_cube = '1' then
-      for i in NUM_CUBES - 1 downto 0 loop
-
-        hit := render_lit_cube_pixel(x, y, SCENE(i), SCENE_LIGHT);
-
-        if ((hit.r /= x"00") or (hit.g /= x"00") or (hit.b /= x"00")) then
-          color := hit;
-        end if;
-
-      end loop;
-    end if;
-
     if show_sphere = '1' then
       for i in NUM_SPHERES - 1 downto 0 loop
 
@@ -73,6 +61,18 @@ begin
         else
           hit := render_lit_sphere_pixel(x, y, SCENE_SPHERES(i), SCENE_LIGHT);
         end if;
+
+        if ((hit.r /= x"00") or (hit.g /= x"00") or (hit.b /= x"00")) then
+          color := hit;
+        end if;
+
+      end loop;
+    end if;
+
+    if show_cube = '1' then
+      for i in NUM_CUBES - 1 downto 0 loop
+
+        hit := render_lit_cube_pixel(x, y, SCENE(i), SCENE_LIGHT);
 
         if ((hit.r /= x"00") or (hit.g /= x"00") or (hit.b /= x"00")) then
           color := hit;
