@@ -138,6 +138,17 @@ PACKAGE BODY RENDERING_PIPELINE IS
         px, py : INTEGER;
         cube : cube_t
     ) RETURN INTEGER IS
+        TYPE face_triangle_t IS RECORD
+            x1 : INTEGER;
+            y1 : INTEGER;
+            x2 : INTEGER;
+            y2 : INTEGER;
+            x3 : INTEGER;
+            y3 : INTEGER;
+            face_id : INTEGER;
+        END RECORD;
+        TYPE face_triangle_array_t IS ARRAY (0 TO 5) OF face_triangle_t;
+
         VARIABLE local_px : INTEGER;
         VARIABLE local_py : INTEGER;
         CONSTANT half_side : INTEGER := cube.side_length / 2;
@@ -159,29 +170,34 @@ PACKAGE BODY RENDERING_PIPELINE IS
         CONSTANT b1_y : INTEGER := f1_y + depth_y;
         CONSTANT b2_x : INTEGER := f2_x + depth_x;
         CONSTANT b2_y : INTEGER := f2_y + depth_y;
-        CONSTANT b3_x : INTEGER := f3_x + depth_x;
-        CONSTANT b3_y : INTEGER := f3_y + depth_y;
+
+        -- Visible-face triangle list: 2 front + 2 right + 2 top.
+        -- Ordering encodes face priority for overlap resolution.
+        CONSTANT visible_face_triangles : face_triangle_array_t := (
+            0 => (x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => f2_x, y3 => f2_y, face_id => 1),
+            1 => (x1 => f0_x, y1 => f0_y, x2 => f2_x, y2 => f2_y, x3 => f3_x, y3 => f3_y, face_id => 1),
+            2 => (x1 => f1_x, y1 => f1_y, x2 => f2_x, y2 => f2_y, x3 => b2_x, y3 => b2_y, face_id => 2),
+            3 => (x1 => f1_x, y1 => f1_y, x2 => b2_x, y2 => b2_y, x3 => b1_x, y3 => b1_y, face_id => 2),
+            4 => (x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => b1_x, y3 => b1_y, face_id => 3),
+            5 => (x1 => f0_x, y1 => f0_y, x2 => b1_x, y2 => b1_y, x3 => b0_x, y3 => b0_y, face_id => 3)
+        );
     BEGIN
         local_px := cube.center_x + inv_scale_delta_q8(px - cube.center_x, cube.scale_x_q8);
         local_py := cube.center_y + inv_scale_delta_q8(py - cube.center_y, cube.scale_y_q8);
 
-        -- Front face is axis-aligned in screen space; keep this a direct bounds
-        -- check so the internal triangulation diagonal cannot appear as a seam.
-        IF (local_px >= f0_x) AND (local_px <= f2_x) AND
-           (local_py >= f0_y) AND (local_py <= f2_y) THEN
-            RETURN 1; -- front
-        END IF;
-
-        -- Test side faces as explicit triangles (shared primitive path).
-        IF point_in_triangle_fast(local_px, local_py, f1_x, f1_y, f2_x, f2_y, b2_x, b2_y) OR
-           point_in_triangle_fast(local_px, local_py, f1_x, f1_y, b2_x, b2_y, b1_x, b1_y) THEN
-            RETURN 2; -- right
-        END IF;
-
-        IF point_in_triangle_fast(local_px, local_py, f0_x, f0_y, f1_x, f1_y, b1_x, b1_y) OR
-           point_in_triangle_fast(local_px, local_py, f0_x, f0_y, b1_x, b1_y, b0_x, b0_y) THEN
-            RETURN 3; -- top
-        END IF;
+        FOR tri_idx IN visible_face_triangles'RANGE LOOP
+            IF point_in_triangle_fast(
+                local_px, local_py,
+                visible_face_triangles(tri_idx).x1,
+                visible_face_triangles(tri_idx).y1,
+                visible_face_triangles(tri_idx).x2,
+                visible_face_triangles(tri_idx).y2,
+                visible_face_triangles(tri_idx).x3,
+                visible_face_triangles(tri_idx).y3
+            ) THEN
+                RETURN visible_face_triangles(tri_idx).face_id;
+            END IF;
+        END LOOP;
 
         -- Hidden faces (back/left/bottom) are intentionally not classified.
         -- Restricting to visible faces keeps per-face shading while reducing
