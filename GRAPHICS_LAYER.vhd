@@ -44,11 +44,10 @@ architecture behavioral of graphics_layer is
   signal pixel_color : color_t;
   constant SCREEN_CX : integer := 320;
   constant SCREEN_CY : integer := 240;
-  type cube_int_array_t is array (0 to NUM_CUBES - 1) of integer;
-  type sphere_int_array_t is array (0 to NUM_SPHERES - 1) of integer;
 
   -- 16/256 turn = 22.5 degrees.
   constant ROT_STEP_ANGLE : angle_t := to_unsigned(16, 8);
+  constant ROT_NONE_MAT   : mat4 := IDENTITY_MAT4;
   constant ROT_LEFT_MAT   : mat4 := make_rotate_z(ROT_STEP_ANGLE);
   constant ROT_RIGHT_MAT  : mat4 := make_rotate_z(to_unsigned(240, 8));
 
@@ -84,50 +83,41 @@ architecture behavioral of graphics_layer is
     return SCREEN_CY + q8_mul_int(m(1, 0), dx) + q8_mul_int(m(1, 1), dy);
   end function;
 
-  function build_cube_rot_x(m : mat4) return cube_int_array_t is
-    variable out_v : cube_int_array_t;
+  function transform_cube(
+    base_cube : cube_t;
+    m : mat4;
+    scale_num, scale_den, x_offset, y_offset : integer
+  ) return cube_t is
+    variable out_cube : cube_t;
+    variable cx_rot   : integer;
+    variable cy_rot   : integer;
   begin
-    for i in 0 to NUM_CUBES - 1 loop
-      out_v(i) := rotated_x(SCENE(i).center_x, SCENE(i).center_y, m);
-    end loop;
-    return out_v;
+    cx_rot := rotated_x(base_cube.center_x, base_cube.center_y, m);
+    cy_rot := rotated_y(base_cube.center_x, base_cube.center_y, m);
+    out_cube := base_cube;
+    out_cube.center_x := SCREEN_CX + (cx_rot - SCREEN_CX) * scale_num / scale_den + x_offset;
+    out_cube.center_y := SCREEN_CY + (cy_rot - SCREEN_CY) * scale_num / scale_den + y_offset;
+    out_cube.side_length := base_cube.side_length * scale_num / scale_den;
+    return out_cube;
   end function;
 
-  function build_cube_rot_y(m : mat4) return cube_int_array_t is
-    variable out_v : cube_int_array_t;
+  function transform_sphere(
+    base_sphere : sphere_t;
+    m : mat4;
+    scale_num, scale_den, x_offset, y_offset : integer
+  ) return sphere_t is
+    variable out_sphere : sphere_t;
+    variable cx_rot     : integer;
+    variable cy_rot     : integer;
   begin
-    for i in 0 to NUM_CUBES - 1 loop
-      out_v(i) := rotated_y(SCENE(i).center_x, SCENE(i).center_y, m);
-    end loop;
-    return out_v;
+    cx_rot := rotated_x(base_sphere.center_x, base_sphere.center_y, m);
+    cy_rot := rotated_y(base_sphere.center_x, base_sphere.center_y, m);
+    out_sphere := base_sphere;
+    out_sphere.center_x := SCREEN_CX + (cx_rot - SCREEN_CX) * scale_num / scale_den + x_offset;
+    out_sphere.center_y := SCREEN_CY + (cy_rot - SCREEN_CY) * scale_num / scale_den + y_offset;
+    out_sphere.radius := base_sphere.radius * scale_num / scale_den;
+    return out_sphere;
   end function;
-
-  function build_sphere_rot_x(m : mat4) return sphere_int_array_t is
-    variable out_v : sphere_int_array_t;
-  begin
-    for i in 0 to NUM_SPHERES - 1 loop
-      out_v(i) := rotated_x(SCENE_SPHERES(i).center_x, SCENE_SPHERES(i).center_y, m);
-    end loop;
-    return out_v;
-  end function;
-
-  function build_sphere_rot_y(m : mat4) return sphere_int_array_t is
-    variable out_v : sphere_int_array_t;
-  begin
-    for i in 0 to NUM_SPHERES - 1 loop
-      out_v(i) := rotated_y(SCENE_SPHERES(i).center_x, SCENE_SPHERES(i).center_y, m);
-    end loop;
-    return out_v;
-  end function;
-
-  constant CUBE_LEFT_X   : cube_int_array_t   := build_cube_rot_x(ROT_LEFT_MAT);
-  constant CUBE_LEFT_Y   : cube_int_array_t   := build_cube_rot_y(ROT_LEFT_MAT);
-  constant CUBE_RIGHT_X  : cube_int_array_t   := build_cube_rot_x(ROT_RIGHT_MAT);
-  constant CUBE_RIGHT_Y  : cube_int_array_t   := build_cube_rot_y(ROT_RIGHT_MAT);
-  constant SPHERE_LEFT_X : sphere_int_array_t := build_sphere_rot_x(ROT_LEFT_MAT);
-  constant SPHERE_LEFT_Y : sphere_int_array_t := build_sphere_rot_y(ROT_LEFT_MAT);
-  constant SPHERE_RIGHT_X : sphere_int_array_t := build_sphere_rot_x(ROT_RIGHT_MAT);
-  constant SPHERE_RIGHT_Y : sphere_int_array_t := build_sphere_rot_y(ROT_RIGHT_MAT);
 
 begin
 
@@ -154,10 +144,7 @@ begin
     -- Temporaries for transformed object geometry
     variable scaled_cube   : cube_t;
     variable scaled_sphere : sphere_t;
-    variable cube_center_x   : integer;
-    variable cube_center_y   : integer;
-    variable sphere_center_x : integer;
-    variable sphere_center_y : integer;
+    variable active_rot_mat : mat4;
 
     variable color : color_t;
     variable hit   : color_t;
@@ -173,32 +160,20 @@ begin
       when others => scale_num := 1; scale_den := 1;   -- zoom_level 2: normal
     end case;
 
+    if (rotate_left = '1') and (rotate_right = '0') then
+      active_rot_mat := ROT_LEFT_MAT;
+    elsif (rotate_right = '1') and (rotate_left = '0') then
+      active_rot_mat := ROT_RIGHT_MAT;
+    else
+      active_rot_mat := ROT_NONE_MAT;
+    end if;
+
     color := BACKGROUND_COLOR;
 
     if show_cube = '1' then
-      for i in NUM_CUBES - 1 downto 0 loop
-
-        -- Apply zoom (around screen centre 320,240) then pan offset.
-        -- Offset is in screen-space so panning distance is independent of zoom.
-        if (rotate_left = '1') and (rotate_right = '0') then
-          cube_center_x := CUBE_LEFT_X(i);
-          cube_center_y := CUBE_LEFT_Y(i);
-        elsif (rotate_right = '1') and (rotate_left = '0') then
-          cube_center_x := CUBE_RIGHT_X(i);
-          cube_center_y := CUBE_RIGHT_Y(i);
-        else
-          cube_center_x := SCENE(i).center_x;
-          cube_center_y := SCENE(i).center_y;
-        end if;
-
-        scaled_cube := (
-          center_x    => SCREEN_CX + (cube_center_x - SCREEN_CX) * scale_num / scale_den + x_offset,
-          center_y    => SCREEN_CY + (cube_center_y - SCREEN_CY) * scale_num / scale_den + y_offset,
-          side_length => SCENE(i).side_length * scale_num / scale_den,
-          scale_x_q8  => SCENE(i).scale_x_q8,
-          scale_y_q8  => SCENE(i).scale_y_q8,
-          color       => SCENE(i).color
-        );
+      for i in SCENE'reverse_range loop
+        -- Apply matrix transform first, then zoom/pan in screen space.
+        scaled_cube := transform_cube(SCENE(i), active_rot_mat, scale_num, scale_den, x_offset, y_offset);
 
         hit := render_lit_cube_pixel(x, y, scaled_cube, SCENE_LIGHT);
 
@@ -210,27 +185,8 @@ begin
     end if;
 
     if show_sphere = '1' then
-      for i in NUM_SPHERES - 1 downto 0 loop
-
-        if (rotate_left = '1') and (rotate_right = '0') then
-          sphere_center_x := SPHERE_LEFT_X(i);
-          sphere_center_y := SPHERE_LEFT_Y(i);
-        elsif (rotate_right = '1') and (rotate_left = '0') then
-          sphere_center_x := SPHERE_RIGHT_X(i);
-          sphere_center_y := SPHERE_RIGHT_Y(i);
-        else
-          sphere_center_x := SCENE_SPHERES(i).center_x;
-          sphere_center_y := SCENE_SPHERES(i).center_y;
-        end if;
-
-        scaled_sphere := (
-          center_x => SCREEN_CX + (sphere_center_x - SCREEN_CX) * scale_num / scale_den + x_offset,
-          center_y => SCREEN_CY + (sphere_center_y - SCREEN_CY) * scale_num / scale_den + y_offset,
-          radius   => SCENE_SPHERES(i).radius * scale_num / scale_den,
-          scale_x_q8 => SCENE_SPHERES(i).scale_x_q8,
-          scale_y_q8 => SCENE_SPHERES(i).scale_y_q8,
-          color    => SCENE_SPHERES(i).color
-        );
+      for i in SCENE_SPHERES'reverse_range loop
+        scaled_sphere := transform_sphere(SCENE_SPHERES(i), active_rot_mat, scale_num, scale_den, x_offset, y_offset);
 
         if SPHERE_WIREFRAME_MODE then
           hit := render_wireframe_sphere_pixel(x, y, scaled_sphere, 2);

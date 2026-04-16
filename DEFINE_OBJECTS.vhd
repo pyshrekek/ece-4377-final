@@ -17,7 +17,7 @@
 --   ambient_q8           : ambient term  (0-255)
 --   diffuse_q8           : diffuse scale (0-255)
 --
--- To add a cube: increment NUM_CUBES and append a SCENE entry.
+-- To add a cube: append a SCENE entry.
 -- To hide one:   set side_length => 0  (zero-size = invisible).
 -- ============================================================
 
@@ -51,11 +51,7 @@ package define_objects is
 
   -- ── Cubes ────────────────────────────────────────────────
   -- Simple debug cube.
-  constant num_cubes : INTEGER := 1;
-
-  type scene_t is array (0 to NUM_CUBES - 1) of cube_t;
-
-  constant scene : scene_t :=
+  constant scene : cube_scene_t :=
   (
     0 => (center_x => 240, center_y => 240, side_length => 96, scale_x_q8 => 256, scale_y_q8 => 256, color => (r => x"D0", g => x"40", b => x"40"))
   );
@@ -66,12 +62,8 @@ package define_objects is
   --   false => draw fully lit/shaded spheres
   constant sphere_wireframe_mode : boolean := false;
 
-  -- To add a sphere: increment NUM_SPHERES and append a SCENE_SPHERES entry.
+  -- To add a sphere: append a SCENE_SPHERES entry.
   -- To hide one:     set radius => 0  (zero-radius = invisible).
-  constant num_spheres : integer := 1;
-
-  type sphere_scene_t is array (0 to NUM_SPHERES - 1) of sphere_t;
-
   constant scene_spheres : sphere_scene_t :=
   (
     -- index 0: simple sphere

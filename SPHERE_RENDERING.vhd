@@ -22,8 +22,7 @@ package sphere_rendering is
     scale_y_q8 : integer; -- 256 = 1.0x
     color    : color_t;
   end record;
-
-  function int_sqrt(n : integer) return integer;
+  type sphere_scene_t is array (natural range <>) of sphere_t;
 
   function render_lit_sphere_pixel(
     x, y   : integer;
@@ -109,43 +108,6 @@ package body sphere_rendering is
       g => to_slv8((base_g * shade + 128) / 256),
       b => to_slv8((base_b * shade + 128) / 256)
     );
-  end function;
-
-  function int_sqrt(n : integer) return integer is
-    variable val : unsigned(31 downto 0);
-    variable res : unsigned(31 downto 0) := (others => '0');
-    variable bit : unsigned(31 downto 0) := to_unsigned(1073741824, 32); -- 1 << 30
-  begin
-    if n <= 0 then
-      return 0;
-    end if;
-
-    val := to_unsigned(n, 32);
-
-    -- Find the highest power-of-4 <= val.
-    for i in 0 to 15 loop
-      if bit > val then
-        bit := shift_right(bit, 2);
-      end if;
-    end loop;
-
-    -- Restoring integer sqrt: fixed maximum of 16 iterations for 32-bit input.
-    for i in 0 to 15 loop
-      if bit = 0 then
-        exit;
-      end if;
-
-      if val >= (res + bit) then
-        val := val - (res + bit);
-        res := shift_right(res, 1) + bit;
-      else
-        res := shift_right(res, 1);
-      end if;
-
-      bit := shift_right(bit, 2);
-    end loop;
-
-    return to_integer(res);
   end function;
 
   function render_lit_sphere_pixel(

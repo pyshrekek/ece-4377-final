@@ -14,11 +14,6 @@ PACKAGE types IS
     CONSTANT FP_ONE : fp := to_signed(2 ** FP_FRAC, FP_WIDTH);
 
     -- Vector types
-    TYPE vec2 IS RECORD
-        x : fp;
-        y : fp;
-    END RECORD;
-
     TYPE vec3 IS RECORD
         x : fp;
         y : fp;

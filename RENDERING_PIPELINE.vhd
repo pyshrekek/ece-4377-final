@@ -13,6 +13,7 @@ PACKAGE RENDERING_PIPELINE IS
         scale_y_q8 : INTEGER; -- 256 = 1.0x
         color : color_t;
     END RECORD;
+    TYPE cube_scene_t IS ARRAY (NATURAL RANGE <>) OF cube_t;
 
     TYPE light_t IS RECORD
         x_q8 : INTEGER;
@@ -26,13 +27,6 @@ PACKAGE RENDERING_PIPELINE IS
         x, y : INTEGER;
         cube : cube_t;
         light : light_t
-    ) RETURN color_t;
-
-    FUNCTION render_scene_pixel(
-        x, y : INTEGER;
-        cube1, cube2, cube3 : cube_t;
-        light : light_t;
-        background : color_t
     ) RETURN color_t;
 
 END PACKAGE RENDERING_PIPELINE;
@@ -65,11 +59,6 @@ PACKAGE BODY RENDERING_PIPELINE IS
     FUNCTION to_slv8(v : INTEGER) RETURN STD_LOGIC_VECTOR IS
     BEGIN
         RETURN STD_LOGIC_VECTOR(to_unsigned(clamp_u8(v), 8));
-    END FUNCTION;
-
-    FUNCTION is_transparent(c : color_t) RETURN BOOLEAN IS
-    BEGIN
-        RETURN (c.r = x"00") AND (c.g = x"00") AND (c.b = x"00");
     END FUNCTION;
 
     FUNCTION scale_color(base_color : color_t; shade_q8 : INTEGER) RETURN color_t IS
@@ -106,6 +95,37 @@ PACKAGE BODY RENDERING_PIPELINE IS
         RETURN div_round_signed(delta_px * 256, s);
     END FUNCTION;
 
+    FUNCTION sign_of_cross(
+        x1, y1, x2, y2, px, py : INTEGER
+    ) RETURN INTEGER IS
+        VARIABLE cross : INTEGER;
+    BEGIN
+        cross := (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1);
+        IF cross > 0 THEN
+            RETURN 1;
+        ELSIF cross < 0 THEN
+            RETURN -1;
+        END IF;
+        RETURN 0;
+    END FUNCTION;
+
+    FUNCTION is_point_in_quad(
+        px, py : INTEGER;
+        x1, y1, x2, y2, x3, y3, x4, y4 : INTEGER
+    ) RETURN BOOLEAN IS
+        VARIABLE d1, d2, d3, d4 : INTEGER;
+        VARIABLE has_neg, has_pos : BOOLEAN;
+    BEGIN
+        d1 := sign_of_cross(x1, y1, x2, y2, px, py);
+        d2 := sign_of_cross(x2, y2, x3, y3, px, py);
+        d3 := sign_of_cross(x3, y3, x4, y4, px, py);
+        d4 := sign_of_cross(x4, y4, x1, y1, px, py);
+
+        has_neg := (d1 < 0) OR (d2 < 0) OR (d3 < 0) OR (d4 < 0);
+        has_pos := (d1 > 0) OR (d2 > 0) OR (d3 > 0) OR (d4 > 0);
+        RETURN NOT (has_neg AND has_pos);
+    END FUNCTION;
+
     FUNCTION cube_face_id(
         px, py : INTEGER;
         cube : cube_t
@@ -137,18 +157,20 @@ PACKAGE BODY RENDERING_PIPELINE IS
         local_px := cube.center_x + inv_scale_delta_q8(px - cube.center_x, cube.scale_x_q8);
         local_py := cube.center_y + inv_scale_delta_q8(py - cube.center_y, cube.scale_y_q8);
 
-        IF is_point_in_triangle(local_px, local_py, f0_x, f0_y, f1_x, f1_y, f2_x, f2_y) OR
-           is_point_in_triangle(local_px, local_py, f0_x, f0_y, f2_x, f2_y, f3_x, f3_y) THEN
+        -- Front face is axis-aligned in screen space; keep this a direct bounds
+        -- check so the internal triangulation diagonal cannot appear as a seam.
+        IF (local_px >= f0_x) AND (local_px <= f2_x) AND
+           (local_py >= f0_y) AND (local_py <= f2_y) THEN
             RETURN 1; -- front
         END IF;
 
-        IF is_point_in_triangle(local_px, local_py, f1_x, f1_y, f2_x, f2_y, b2_x, b2_y) OR
-           is_point_in_triangle(local_px, local_py, f1_x, f1_y, b2_x, b2_y, b1_x, b1_y) THEN
+        -- Right and top faces are rendered as quads (not split triangles) to
+        -- avoid internal seam artifacts from face-diagonal ambiguity.
+        IF is_point_in_quad(local_px, local_py, f1_x, f1_y, f2_x, f2_y, b2_x, b2_y, b1_x, b1_y) THEN
             RETURN 2; -- right
         END IF;
 
-        IF is_point_in_triangle(local_px, local_py, f0_x, f0_y, f1_x, f1_y, b1_x, b1_y) OR
-           is_point_in_triangle(local_px, local_py, f0_x, f0_y, b1_x, b1_y, b0_x, b0_y) THEN
+        IF is_point_in_quad(local_px, local_py, f0_x, f0_y, f1_x, f1_y, b1_x, b1_y, b0_x, b0_y) THEN
             RETURN 3; -- top
         END IF;
 
@@ -195,32 +217,6 @@ PACKAGE BODY RENDERING_PIPELINE IS
 
         shade_q8 := face_shade_q8(face_id, light);
         RETURN scale_color(cube.color, shade_q8);
-    END FUNCTION;
-
-    FUNCTION render_scene_pixel(
-        x, y : INTEGER;
-        cube1, cube2, cube3 : cube_t;
-        light : light_t;
-        background : color_t
-    ) RETURN color_t IS
-        VARIABLE pixel_color : color_t;
-    BEGIN
-        pixel_color := render_lit_cube_pixel(x, y, cube1, light);
-        IF NOT is_transparent(pixel_color) THEN
-            RETURN pixel_color;
-        END IF;
-
-        pixel_color := render_lit_cube_pixel(x, y, cube2, light);
-        IF NOT is_transparent(pixel_color) THEN
-            RETURN pixel_color;
-        END IF;
-
-        pixel_color := render_lit_cube_pixel(x, y, cube3, light);
-        IF NOT is_transparent(pixel_color) THEN
-            RETURN pixel_color;
-        END IF;
-
-        RETURN background;
     END FUNCTION;
 
 END PACKAGE BODY RENDERING_PIPELINE;

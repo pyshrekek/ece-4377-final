@@ -20,7 +20,6 @@ ARCHITECTURE behavioral OF CUBE_TEST IS
     SIGNAL y : INTEGER RANGE 0 TO 639;
     SIGNAL in_cube1 : BOOLEAN;
     SIGNAL in_cube2 : BOOLEAN;
-    SIGNAL in_cube3 : BOOLEAN;
 
 BEGIN
 
@@ -32,8 +31,6 @@ BEGIN
     
     -- Second cube: cyan, centered at (460, 240)
     in_cube2 <= is_cube_filled(x, y, 460, 240, 120);
-
-    in_cube3 <= is_cube_filled(x, y, 500, 240, 100);
 
     -- Priority: if in first cube, show white; else if in second cube, show cyan; else black
     Red <= x"FF" WHEN in_cube1 ELSE
