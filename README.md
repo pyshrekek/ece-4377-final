@@ -8,6 +8,6 @@ Graphics engine written in VHDL. Displays an image on VGA monitor via the DE2-11
 - `SW(1)`: show/hide cubes
 - `SW(2)`: hold to zoom in
 - `SW(3)`: hold to zoom out
-- `SW(4)`: enable cube RGB color cycling
-- `SW(5)`: enable sphere RGB color cycling
+- `SW(4)`: enable cube RGB color cycling (turning it off freezes current cycle color)
+- `SW(5)`: enable sphere RGB color cycling (turning it off freezes current cycle color)
 - `KEY(0..3)`: pan right/left/down/up

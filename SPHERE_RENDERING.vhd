@@ -59,6 +59,9 @@ package body sphere_rendering is
     variable dy_local  : integer;
     variable adx       : integer;
     variable ady       : integer;
+    variable major     : integer;
+    variable minor     : integer;
+    variable radial_approx : integer;
     variable radius2   : integer;
     variable dist2     : integer;
     variable z_approx  : integer;
@@ -81,10 +84,19 @@ package body sphere_rendering is
       return TRANSPARENT;
     end if;
 
-    -- Fast hemisphere depth approximation (no sqrt/divide by variable).
+    -- Timing-friendly radial approximation:
+    -- sqrt(dx^2 + dy^2) ≈ max(|dx|,|dy|) + 3/8*min(|dx|,|dy|)
     adx := abs_int(dx_local);
     ady := abs_int(dy_local);
-    z_approx := sphere.radius - ((adx + ady) / 2);
+    if adx >= ady then
+      major := adx;
+      minor := ady;
+    else
+      major := ady;
+      minor := adx;
+    end if;
+    radial_approx := major + ((3 * minor) / 8);
+    z_approx := sphere.radius - radial_approx;
     if z_approx < 0 then
       z_approx := 0;
     end if;

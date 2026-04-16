@@ -49,6 +49,8 @@ architecture behavioral of graphics_layer is
   constant ROT_NONE_MAT   : mat4 := IDENTITY_MAT4;
   signal cube_color_phase   : integer range 0 to RGB_CYCLE_MAX := 0;
   signal sphere_color_phase : integer range 0 to RGB_CYCLE_MAX := 0;
+  signal cube_cycle_latched   : std_logic := '0';
+  signal sphere_cycle_latched : std_logic := '0';
 
   function div_round_signed_256(num : integer) return integer is
   begin
@@ -186,10 +188,12 @@ begin
     if rising_edge(vert_sync) then
       if cycle_cube_color = '1' then
         cube_color_phase <= next_rgb_phase(cube_color_phase);
+        cube_cycle_latched <= '1';
       end if;
 
       if cycle_sphere_color = '1' then
         sphere_color_phase <= next_rgb_phase(sphere_color_phase);
+        sphere_cycle_latched <= '1';
       end if;
     end if;
   end process color_cycle_proc;
@@ -202,7 +206,8 @@ begin
   -- the scene can be panned and zoomed at run-time via BUTTON_CONTROL.
   render_proc : process (
     x, y, show_sphere, show_cube, cycle_cube_color, cycle_sphere_color,
-    cube_color_phase, sphere_color_phase, x_offset, y_offset, zoom_level
+    cube_color_phase, sphere_color_phase, cube_cycle_latched, sphere_cycle_latched,
+    x_offset, y_offset, zoom_level
   ) is
 
     -- Scale factors derived from zoom_level:
@@ -236,7 +241,7 @@ begin
     if show_cube = '1' then
       for i in SCENE'reverse_range loop
         scaled_cube := transform_cube(SCENE(i), ROT_NONE_MAT, scale_num, scale_den, x_offset, y_offset);
-        if cycle_cube_color = '1' then
+        if (cycle_cube_color = '1') or (cube_cycle_latched = '1') then
           scaled_cube.color := rgb_cycle_color(cube_color_phase);
         end if;
 
@@ -252,7 +257,7 @@ begin
     if show_sphere = '1' then
       for i in SCENE_SPHERES'reverse_range loop
         scaled_sphere := transform_sphere(SCENE_SPHERES(i), ROT_NONE_MAT, scale_num, scale_den, x_offset, y_offset);
-        if cycle_sphere_color = '1' then
+        if (cycle_sphere_color = '1') or (sphere_cycle_latched = '1') then
           scaled_sphere.color := rgb_cycle_color(sphere_color_phase);
         end if;
 
