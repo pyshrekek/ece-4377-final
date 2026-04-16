@@ -187,6 +187,44 @@ PACKAGE BODY RENDERING_PIPELINE IS
         z : INTEGER;
     END RECORD;
 
+    TYPE point3_t IS RECORD
+        x : INTEGER;
+        y : INTEGER;
+        z : INTEGER;
+    END RECORD;
+    TYPE point3_scene_t IS ARRAY (NATURAL RANGE <>) OF point3_t;
+
+    TYPE proj_point_t IS RECORD
+        x : INTEGER;
+        y : INTEGER;
+        depth_q8 : INTEGER;
+    END RECORD;
+    TYPE proj_point_scene_t IS ARRAY (NATURAL RANGE <>) OF proj_point_t;
+
+    TYPE cube_face_t IS RECORD
+        i0 : INTEGER;
+        i1 : INTEGER;
+        i2 : INTEGER;
+        i3 : INTEGER;
+        normal_x_q8 : INTEGER;
+        normal_y_q8 : INTEGER;
+        normal_z_q8 : INTEGER;
+    END RECORD;
+    TYPE cube_face_scene_t IS ARRAY (NATURAL RANGE <>) OF cube_face_t;
+
+    CONSTANT CAMERA_DIST_Q8 : INTEGER := 320 * 256;
+    CONSTANT FOCAL_LEN_Q8   : INTEGER := 260 * 256;
+    CONSTANT NEAR_PLANE_Q8  : INTEGER := 64 * 256;
+
+    CONSTANT CUBE_FACES : cube_face_scene_t(0 TO 5) := (
+        0 => (i0 => 0, i1 => 1, i2 => 2, i3 => 3, normal_x_q8 =>    0, normal_y_q8 =>    0, normal_z_q8 => -256), -- near/front
+        1 => (i0 => 4, i1 => 5, i2 => 6, i3 => 7, normal_x_q8 =>    0, normal_y_q8 =>    0, normal_z_q8 =>  256), -- far/back
+        2 => (i0 => 0, i1 => 3, i2 => 7, i3 => 4, normal_x_q8 => -256, normal_y_q8 =>    0, normal_z_q8 =>    0), -- left
+        3 => (i0 => 1, i1 => 5, i2 => 6, i3 => 2, normal_x_q8 =>  256, normal_y_q8 =>    0, normal_z_q8 =>    0), -- right
+        4 => (i0 => 0, i1 => 4, i2 => 5, i3 => 1, normal_x_q8 =>    0, normal_y_q8 => -256, normal_z_q8 =>    0), -- top
+        5 => (i0 => 3, i1 => 2, i2 => 6, i3 => 7, normal_x_q8 =>    0, normal_y_q8 =>  256, normal_z_q8 =>    0)  -- bottom
+    );
+
     FUNCTION rotate_normal_q8(
         nx, ny, nz : INTEGER;
         ax, ay, az : angle_t
@@ -223,6 +261,72 @@ PACKAGE BODY RENDERING_PIPELINE IS
         out_n.y := div_round_signed((sz * x2) + (cz * y2), 256);
         out_n.z := z2;
         RETURN out_n;
+    END FUNCTION;
+
+    FUNCTION scale_delta_q8(delta_px, scale_q8 : INTEGER) RETURN INTEGER IS
+        VARIABLE s : INTEGER;
+    BEGIN
+        s := clamp_scale_q8(scale_q8);
+        IF s = 256 THEN
+            RETURN delta_px;
+        END IF;
+        RETURN div_round_signed(delta_px * s, 256);
+    END FUNCTION;
+
+    FUNCTION rotate_point_q8(
+        px, py, pz : INTEGER;
+        ax, ay, az : angle_t
+    ) RETURN point3_t IS
+        VARIABLE cx_q8 : INTEGER;
+        VARIABLE sx_q8 : INTEGER;
+        VARIABLE cy_q8 : INTEGER;
+        VARIABLE sy_q8 : INTEGER;
+        VARIABLE cz_q8 : INTEGER;
+        VARIABLE sz_q8 : INTEGER;
+        VARIABLE x1, y1, z1 : INTEGER;
+        VARIABLE x2, y2, z2 : INTEGER;
+        VARIABLE out_p : point3_t;
+    BEGIN
+        cx_q8 := to_integer(fp_cos(ax));
+        sx_q8 := to_integer(fp_sin(ax));
+        cy_q8 := to_integer(fp_cos(ay));
+        sy_q8 := to_integer(fp_sin(ay));
+        cz_q8 := to_integer(fp_cos(az));
+        sz_q8 := to_integer(fp_sin(az));
+
+        -- Rotate around X.
+        x1 := px;
+        y1 := div_round_signed((cx_q8 * py) - (sx_q8 * pz), 256);
+        z1 := div_round_signed((sx_q8 * py) + (cx_q8 * pz), 256);
+
+        -- Rotate around Y.
+        x2 := div_round_signed((cy_q8 * x1) + (sy_q8 * z1), 256);
+        y2 := y1;
+        z2 := div_round_signed(((-sy_q8) * x1) + (cy_q8 * z1), 256);
+
+        -- Rotate around Z.
+        out_p.x := div_round_signed((cz_q8 * x2) - (sz_q8 * y2), 256);
+        out_p.y := div_round_signed((sz_q8 * x2) + (cz_q8 * y2), 256);
+        out_p.z := z2;
+        RETURN out_p;
+    END FUNCTION;
+
+    FUNCTION project_point(
+        px, py, pz : INTEGER;
+        center_x, center_y : INTEGER
+    ) RETURN proj_point_t IS
+        VARIABLE out_p    : proj_point_t;
+        VARIABLE depth_q8 : INTEGER;
+    BEGIN
+        depth_q8 := CAMERA_DIST_Q8 + (pz * 256);
+        IF depth_q8 < NEAR_PLANE_Q8 THEN
+            depth_q8 := NEAR_PLANE_Q8;
+        END IF;
+
+        out_p.x := center_x + div_round_signed(FOCAL_LEN_Q8 * px, depth_q8);
+        out_p.y := center_y + div_round_signed(FOCAL_LEN_Q8 * py, depth_q8);
+        out_p.depth_q8 := depth_q8;
+        RETURN out_p;
     END FUNCTION;
 
     FUNCTION point_in_triangle_fast(
@@ -282,115 +386,90 @@ PACKAGE BODY RENDERING_PIPELINE IS
         cube : cube_t;
         light : light_t
     ) RETURN color_t IS
-        VARIABLE local_px : INTEGER;
-        VARIABLE local_py : INTEGER;
-        VARIABLE local_dx : INTEGER;
-        VARIABLE local_dy : INTEGER;
-        VARIABLE rot_dx   : INTEGER;
-        VARIABLE rot_dy   : INTEGER;
-        VARIABLE cos_z_q8 : INTEGER;
-        VARIABLE sin_z_q8 : INTEGER;
-        VARIABLE cos_x_q8 : INTEGER;
-        VARIABLE sin_x_q8 : INTEGER;
-        VARIABLE cos_y_q8 : INTEGER;
-        VARIABLE sin_y_q8 : INTEGER;
-        VARIABLE pixel_color : color_t;
         VARIABLE half_side : INTEGER;
-        VARIABLE half_w    : INTEGER;
-        VARIABLE half_h    : INTEGER;
-        VARIABLE depth_x   : INTEGER;
-        VARIABLE depth_y   : INTEGER;
-        VARIABLE f0_x, f0_y, f1_x, f1_y, f2_x, f2_y, f3_x, f3_y : INTEGER;
-        VARIABLE b0_x, b0_y, b1_x, b1_y, b2_x, b2_y : INTEGER;
-        VARIABLE front_n : normal_q8_t;
-        VARIABLE right_n : normal_q8_t;
-        VARIABLE top_n   : normal_q8_t;
-        VARIABLE visible_face_triangles : triangle_scene_t(0 TO 5);
+        VARIABLE scale_z_q8 : INTEGER;
+        VARIABLE local_vertices : point3_scene_t(0 TO 7);
+        VARIABLE rotated_vertices : point3_scene_t(0 TO 7);
+        VARIABLE projected_vertices : proj_point_scene_t(0 TO 7);
+        VARIABLE face_n : normal_q8_t;
+        VARIABLE face_shade_q8 : INTEGER;
+        VARIABLE best_depth_sum : INTEGER := INTEGER'HIGH;
+        VARIABLE depth_sum : INTEGER;
+        VARIABLE best_color : color_t := TRANSPARENT;
+        VARIABLE v0, v1, v2, v3 : proj_point_t;
     BEGIN
-        half_side := cube.side_length / 2;
-        cos_x_q8 := to_integer(fp_cos(cube.rotation_x));
-        sin_x_q8 := to_integer(fp_sin(cube.rotation_x));
-        cos_y_q8 := to_integer(fp_cos(cube.rotation_y));
-        sin_y_q8 := to_integer(fp_sin(cube.rotation_y));
-
-        -- Approximate X/Y-axis tilt in screen-space by foreshortening the front face
-        -- and skewing the back-face offset.
-        half_w := max2(1, div_round_signed(half_side * abs(cos_y_q8), 256));
-        half_h := max2(1, div_round_signed(half_side * abs(cos_x_q8), 256));
-        depth_x := (cube.side_length / 3) + div_round_signed(cube.side_length * sin_y_q8, 1024);
-        depth_y := (-cube.side_length / 4) - div_round_signed(cube.side_length * sin_x_q8, 1024);
-
-        f0_x := cube.center_x - half_w;
-        f0_y := cube.center_y - half_h;
-        f1_x := cube.center_x + half_w;
-        f1_y := cube.center_y - half_h;
-        f2_x := cube.center_x + half_w;
-        f2_y := cube.center_y + half_h;
-        f3_x := cube.center_x - half_w;
-        f3_y := cube.center_y + half_h;
-
-        b0_x := f0_x + depth_x;
-        b0_y := f0_y + depth_y;
-        b1_x := f1_x + depth_x;
-        b1_y := f1_y + depth_y;
-        b2_x := f2_x + depth_x;
-        b2_y := f2_y + depth_y;
-
-        front_n := rotate_normal_q8(0, 0, 256, cube.rotation_x, cube.rotation_y, cube.rotation_z);
-        right_n := rotate_normal_q8(256, 0, 0, cube.rotation_x, cube.rotation_y, cube.rotation_z);
-        top_n := rotate_normal_q8(0, 256, 0, cube.rotation_x, cube.rotation_y, cube.rotation_z);
-
-        -- Visible-face triangle list: 2 front + 2 right + 2 top.
-        visible_face_triangles(0) := (
-            x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => f2_x, y3 => f2_y,
-            normal_x_q8 => front_n.x, normal_y_q8 => front_n.y, normal_z_q8 => front_n.z
-        );
-        visible_face_triangles(1) := (
-            x1 => f0_x, y1 => f0_y, x2 => f2_x, y2 => f2_y, x3 => f3_x, y3 => f3_y,
-            normal_x_q8 => front_n.x, normal_y_q8 => front_n.y, normal_z_q8 => front_n.z
-        );
-        visible_face_triangles(2) := (
-            x1 => f1_x, y1 => f1_y, x2 => f2_x, y2 => f2_y, x3 => b2_x, y3 => b2_y,
-            normal_x_q8 => right_n.x, normal_y_q8 => right_n.y, normal_z_q8 => right_n.z
-        );
-        visible_face_triangles(3) := (
-            x1 => f1_x, y1 => f1_y, x2 => b2_x, y2 => b2_y, x3 => b1_x, y3 => b1_y,
-            normal_x_q8 => right_n.x, normal_y_q8 => right_n.y, normal_z_q8 => right_n.z
-        );
-        visible_face_triangles(4) := (
-            x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => b1_x, y3 => b1_y,
-            normal_x_q8 => top_n.x, normal_y_q8 => top_n.y, normal_z_q8 => top_n.z
-        );
-        visible_face_triangles(5) := (
-            x1 => f0_x, y1 => f0_y, x2 => b1_x, y2 => b1_y, x3 => b0_x, y3 => b0_y,
-            normal_x_q8 => top_n.x, normal_y_q8 => top_n.y, normal_z_q8 => top_n.z
-        );
-
-        -- Evaluate triangle coverage in cube local-space so scaling remains stable.
-        local_px := cube.center_x + inv_scale_delta_q8(x - cube.center_x, cube.scale_x_q8);
-        local_py := cube.center_y + inv_scale_delta_q8(y - cube.center_y, cube.scale_y_q8);
-
-        -- Rotate sample point by -theta around cube center so unrotated geometry
-        -- tests represent a cube rotated by +theta about its own center.
-        IF cube.rotation_z /= to_unsigned(0, cube.rotation_z'length) THEN
-            cos_z_q8 := to_integer(fp_cos(cube.rotation_z));
-            sin_z_q8 := to_integer(fp_sin(cube.rotation_z));
-            local_dx := local_px - cube.center_x;
-            local_dy := local_py - cube.center_y;
-            rot_dx := div_round_signed((cos_z_q8 * local_dx) + (sin_z_q8 * local_dy), 256);
-            rot_dy := div_round_signed(((-sin_z_q8) * local_dx) + (cos_z_q8 * local_dy), 256);
-            local_px := cube.center_x + rot_dx;
-            local_py := cube.center_y + rot_dy;
+        IF cube.side_length <= 0 THEN
+            RETURN TRANSPARENT;
         END IF;
 
-        pixel_color := render_lit_triangle_scene_pixel(
-            local_px,
-            local_py,
-            visible_face_triangles,
-            cube.color,
-            light
-        );
-        RETURN pixel_color;
+        half_side := cube.side_length / 2;
+        scale_z_q8 := (cube.scale_x_q8 + cube.scale_y_q8) / 2;
+
+        -- Local cube vertices (y grows downward on screen; negative z is closer).
+        local_vertices(0) := (x => -half_side, y => -half_side, z => -half_side);
+        local_vertices(1) := (x =>  half_side, y => -half_side, z => -half_side);
+        local_vertices(2) := (x =>  half_side, y =>  half_side, z => -half_side);
+        local_vertices(3) := (x => -half_side, y =>  half_side, z => -half_side);
+        local_vertices(4) := (x => -half_side, y => -half_side, z =>  half_side);
+        local_vertices(5) := (x =>  half_side, y => -half_side, z =>  half_side);
+        local_vertices(6) := (x =>  half_side, y =>  half_side, z =>  half_side);
+        local_vertices(7) := (x => -half_side, y =>  half_side, z =>  half_side);
+
+        FOR vert_idx IN 0 TO 7 LOOP
+            rotated_vertices(vert_idx) := rotate_point_q8(
+                scale_delta_q8(local_vertices(vert_idx).x, cube.scale_x_q8),
+                scale_delta_q8(local_vertices(vert_idx).y, cube.scale_y_q8),
+                scale_delta_q8(local_vertices(vert_idx).z, scale_z_q8),
+                cube.rotation_x,
+                cube.rotation_y,
+                cube.rotation_z
+            );
+            projected_vertices(vert_idx) := project_point(
+                rotated_vertices(vert_idx).x,
+                rotated_vertices(vert_idx).y,
+                rotated_vertices(vert_idx).z,
+                cube.center_x,
+                cube.center_y
+            );
+        END LOOP;
+
+        FOR face_idx IN CUBE_FACES'RANGE LOOP
+            face_n := rotate_normal_q8(
+                CUBE_FACES(face_idx).normal_x_q8,
+                CUBE_FACES(face_idx).normal_y_q8,
+                CUBE_FACES(face_idx).normal_z_q8,
+                cube.rotation_x,
+                cube.rotation_y,
+                cube.rotation_z
+            );
+
+            -- Back-face culling against camera looking along +Z.
+            IF face_n.z < 0 THEN
+                face_shade_q8 := shade_from_normal_q8(face_n.x, face_n.y, face_n.z, light);
+                v0 := projected_vertices(CUBE_FACES(face_idx).i0);
+                v1 := projected_vertices(CUBE_FACES(face_idx).i1);
+                v2 := projected_vertices(CUBE_FACES(face_idx).i2);
+                v3 := projected_vertices(CUBE_FACES(face_idx).i3);
+
+                IF point_in_triangle_fast(x, y, v0.x, v0.y, v1.x, v1.y, v2.x, v2.y) THEN
+                    depth_sum := v0.depth_q8 + v1.depth_q8 + v2.depth_q8;
+                    IF depth_sum < best_depth_sum THEN
+                        best_depth_sum := depth_sum;
+                        best_color := scale_color(cube.color, face_shade_q8);
+                    END IF;
+                END IF;
+
+                IF point_in_triangle_fast(x, y, v0.x, v0.y, v2.x, v2.y, v3.x, v3.y) THEN
+                    depth_sum := v0.depth_q8 + v2.depth_q8 + v3.depth_q8;
+                    IF depth_sum < best_depth_sum THEN
+                        best_depth_sum := depth_sum;
+                        best_color := scale_color(cube.color, face_shade_q8);
+                    END IF;
+                END IF;
+            END IF;
+        END LOOP;
+
+        RETURN best_color;
     END FUNCTION;
 
 END PACKAGE BODY RENDERING_PIPELINE;
