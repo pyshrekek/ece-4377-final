@@ -17,6 +17,7 @@
 --   make_rotate_x    (angle_idx)             -> mat4
 --   make_rotate_y    (angle_idx)             -> mat4
 --   make_rotate_z    (angle_idx)             -> mat4
+--   make_rotate_about_z (cx, cy, angle_idx)  -> mat4
 --   mat4_mul         (A, B)                  -> mat4   (A * B)
 --
 -- Angles are passed as an 8-bit "binary angle" (0..255 = 0..360°)
@@ -58,6 +59,7 @@ PACKAGE transforms IS
     FUNCTION make_rotate_x  (a : angle_t)     RETURN mat4;
     FUNCTION make_rotate_y  (a : angle_t)     RETURN mat4;
     FUNCTION make_rotate_z  (a : angle_t)     RETURN mat4;
+    FUNCTION make_rotate_about_z(cx, cy : fp; a : angle_t) RETURN mat4;
 
 END PACKAGE;
 
@@ -261,6 +263,22 @@ PACKAGE BODY transforms IS
         M(1, 0) := s;
         M(1, 1) := c;
         RETURN M;
+    END FUNCTION;
+
+    -- ----------------------------------------------------------
+    -- Rotation about an arbitrary 2D pivot (cx, cy) in screen/world
+    -- space using homogeneous transforms:
+    --   M = T(+cx,+cy,0) * Rz(a) * T(-cx,-cy,0)
+    -- ----------------------------------------------------------
+    FUNCTION make_rotate_about_z(cx, cy : fp; a : angle_t) RETURN mat4 IS
+        VARIABLE t_to_origin : mat4;
+        VARIABLE r_z         : mat4;
+        VARIABLE t_back      : mat4;
+    BEGIN
+        t_to_origin := make_translate(-cx, -cy, FP_ZERO);
+        r_z := make_rotate_z(a);
+        t_back := make_translate(cx, cy, FP_ZERO);
+        RETURN mat4_mul(t_back, mat4_mul(r_z, t_to_origin));
     END FUNCTION;
 
 END PACKAGE BODY;

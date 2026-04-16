@@ -10,6 +10,7 @@
 --   center_x, center_y  : screen-space centre (pixels)
 --   side_length          : full side length (pixels)
 --   scale_x_q8, scale_y_q8 : non-uniform scale in Q8.8 (256 = 1.0x)
+--   rotation_z             : 8-bit angle (0..255 => 0..360 deg), about cube center
 --   color                : RGB 8-bit per channel
 --
 -- light_t fields (defined in RENDERING_PIPELINE):
@@ -23,6 +24,7 @@
 
 library ieee;
   use ieee.std_logic_1164.all;
+  use ieee.numeric_std.all;
   use work.graphics_test_utils.all;
   use work.rendering_pipeline.all;
   use work.sphere_rendering.all;
@@ -53,7 +55,12 @@ package define_objects is
   -- Simple debug cube.
   constant scene : cube_scene_t :=
   (
-    0 => (center_x => 240, center_y => 240, side_length => 96, scale_x_q8 => 256, scale_y_q8 => 256, color => (r => x"D0", g => x"40", b => x"40"))
+    0 => (
+      center_x => 240, center_y => 240, side_length => 96,
+      scale_x_q8 => 256, scale_y_q8 => 256,
+      rotation_z => to_unsigned(0, 8),
+      color => (r => x"D0", g => x"40", b => x"40")
+    )
   );
 
   -- ── Spheres ──────────────────────────────────────────────

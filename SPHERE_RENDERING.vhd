@@ -89,19 +89,34 @@ package body sphere_rendering is
       z_approx := 0;
     end if;
 
-    -- Approximate N · L in a timing-friendly way for pixel-rate combinational logic.
+    -- Approximate N · L and use finer, constant-denominator normalization bins
+    -- to reduce visible banding while keeping timing-friendly arithmetic.
     dot_num := (dx_local * light.x_q8) + (dy_local * light.y_q8) + (z_approx * light.z_q8);
     if dot_num < 0 then
       dot_q8 := 0;
     else
-      if sphere.radius <= 32 then
-        dot_q8 := dot_num / 32;
+      if sphere.radius <= 24 then
+        dot_q8 := (dot_num + 12) / 24;
+      elsif sphere.radius <= 32 then
+        dot_q8 := (dot_num + 16) / 32;
+      elsif sphere.radius <= 40 then
+        dot_q8 := (dot_num + 20) / 40;
+      elsif sphere.radius <= 48 then
+        dot_q8 := (dot_num + 24) / 48;
+      elsif sphere.radius <= 56 then
+        dot_q8 := (dot_num + 28) / 56;
       elsif sphere.radius <= 64 then
-        dot_q8 := dot_num / 64;
+        dot_q8 := (dot_num + 32) / 64;
+      elsif sphere.radius <= 80 then
+        dot_q8 := (dot_num + 40) / 80;
+      elsif sphere.radius <= 96 then
+        dot_q8 := (dot_num + 48) / 96;
       elsif sphere.radius <= 128 then
-        dot_q8 := dot_num / 128;
+        dot_q8 := (dot_num + 64) / 128;
+      elsif sphere.radius <= 160 then
+        dot_q8 := (dot_num + 80) / 160;
       else
-        dot_q8 := dot_num / 256;
+        dot_q8 := (dot_num + 96) / 192;
       end if;
     end if;
 

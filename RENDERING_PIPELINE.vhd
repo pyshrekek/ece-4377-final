@@ -2,6 +2,7 @@ LIBRARY IEEE;
 USE IEEE.STD_LOGIC_1164.ALL;
 USE IEEE.NUMERIC_STD.ALL;
 USE work.GRAPHICS_TEST_UTILS.ALL;
+USE work.transforms.ALL;
 
 PACKAGE RENDERING_PIPELINE IS
 
@@ -11,6 +12,7 @@ PACKAGE RENDERING_PIPELINE IS
         side_length : INTEGER;
         scale_x_q8 : INTEGER; -- 256 = 1.0x
         scale_y_q8 : INTEGER; -- 256 = 1.0x
+        rotation_z : angle_t; -- 0..255 maps to 0..360°, rotates about cube center
         color : color_t;
     END RECORD;
     TYPE cube_scene_t IS ARRAY (NATURAL RANGE <>) OF cube_t;
@@ -236,6 +238,12 @@ PACKAGE BODY RENDERING_PIPELINE IS
     ) RETURN color_t IS
         VARIABLE local_px : INTEGER;
         VARIABLE local_py : INTEGER;
+        VARIABLE local_dx : INTEGER;
+        VARIABLE local_dy : INTEGER;
+        VARIABLE rot_dx   : INTEGER;
+        VARIABLE rot_dy   : INTEGER;
+        VARIABLE cos_q8   : INTEGER;
+        VARIABLE sin_q8   : INTEGER;
         VARIABLE pixel_color : color_t;
         CONSTANT half_side : INTEGER := cube.side_length / 2;
         CONSTANT depth_x : INTEGER := cube.side_length / 3;
@@ -271,6 +279,19 @@ PACKAGE BODY RENDERING_PIPELINE IS
         -- Evaluate triangle coverage in cube local-space so scaling remains stable.
         local_px := cube.center_x + inv_scale_delta_q8(x - cube.center_x, cube.scale_x_q8);
         local_py := cube.center_y + inv_scale_delta_q8(y - cube.center_y, cube.scale_y_q8);
+
+        -- Rotate sample point by -theta around cube center so unrotated geometry
+        -- tests represent a cube rotated by +theta about its own center.
+        if cube.rotation_z /= to_unsigned(0, cube.rotation_z'length) then
+            cos_q8 := to_integer(fp_cos(cube.rotation_z));
+            sin_q8 := to_integer(fp_sin(cube.rotation_z));
+            local_dx := local_px - cube.center_x;
+            local_dy := local_py - cube.center_y;
+            rot_dx := div_round_signed((cos_q8 * local_dx) + (sin_q8 * local_dy), 256);
+            rot_dy := div_round_signed(((-sin_q8) * local_dx) + (cos_q8 * local_dy), 256);
+            local_px := cube.center_x + rot_dx;
+            local_py := cube.center_y + rot_dy;
+        end if;
 
         pixel_color := render_lit_triangle_scene_pixel(
             local_px,

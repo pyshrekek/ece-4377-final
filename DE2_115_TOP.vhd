@@ -121,6 +121,8 @@ ARCHITECTURE structural OF DE2_115_TOP IS
             show_sphere, show_cube  : IN  STD_LOGIC;
             cycle_cube_color        : IN  STD_LOGIC;
             cycle_sphere_color      : IN  STD_LOGIC;
+            rotate_cube_cw          : IN  STD_LOGIC;
+            rotate_cube_ccw         : IN  STD_LOGIC;
             x_offset                : IN  INTEGER RANGE -320 TO 320;
             y_offset                : IN  INTEGER RANGE -240 TO 240;
             zoom_level              : IN  INTEGER RANGE 0 TO 4;
@@ -158,6 +160,7 @@ ARCHITECTURE structural OF DE2_115_TOP IS
     -- KEY(0-3): move right/left/down/up
     -- SW(2): zoom in  SW(3): zoom out
     -- SW(4): cube RGB color cycle  SW(5): sphere RGB color cycle
+    -- SW(16): cube rotate CW  SW(17): cube rotate CCW
     SIGNAL x_offset_int    : INTEGER RANGE -320 TO 320 := 0;
     SIGNAL y_offset_int    : INTEGER RANGE -240 TO 240 := 0;
     SIGNAL zoom_level_int  : INTEGER RANGE 0 TO 4      := 2;
@@ -208,6 +211,8 @@ BEGIN
         show_cube    => SW(1),
         cycle_cube_color   => SW(4),
         cycle_sphere_color => SW(5),
+        rotate_cube_cw     => SW(16),
+        rotate_cube_ccw    => SW(17),
         x_offset     => x_offset_int,
         y_offset     => y_offset_int,
         zoom_level   => zoom_level_int,
