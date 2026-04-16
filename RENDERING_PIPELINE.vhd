@@ -23,11 +23,29 @@ PACKAGE RENDERING_PIPELINE IS
         diffuse_q8 : INTEGER;
     END RECORD;
 
+    -- Shared triangle primitive used across shape renderers.
+    TYPE triangle_t IS RECORD
+        x1 : INTEGER;
+        y1 : INTEGER;
+        x2 : INTEGER;
+        y2 : INTEGER;
+        x3 : INTEGER;
+        y3 : INTEGER;
+        normal_x_q8 : INTEGER;
+        normal_y_q8 : INTEGER;
+        normal_z_q8 : INTEGER;
+    END RECORD;
+    TYPE triangle_scene_t IS ARRAY (NATURAL RANGE <>) OF triangle_t;
+
     -- Shared fixed-point pixel helpers used by primitive renderers.
     FUNCTION clamp_u8(v : INTEGER) RETURN INTEGER;
     FUNCTION inv_scale_delta_q8(delta_px, scale_q8 : INTEGER) RETURN INTEGER;
     FUNCTION scale_color(base_color : color_t; shade_q8 : INTEGER) RETURN color_t;
     FUNCTION shade_from_dot_q8(dot_q8 : INTEGER; light : light_t) RETURN INTEGER;
+    FUNCTION shade_from_normal_q8(
+        normal_x_q8, normal_y_q8, normal_z_q8 : INTEGER;
+        light : light_t
+    ) RETURN INTEGER;
 
     FUNCTION render_lit_cube_pixel(
         x, y : INTEGER;
@@ -93,6 +111,21 @@ PACKAGE BODY RENDERING_PIPELINE IS
         RETURN clamp_u8(light.ambient_q8 + ((dot_clamped * light.diffuse_q8 + 128) / 256));
     END FUNCTION;
 
+    FUNCTION shade_from_normal_q8(
+        normal_x_q8, normal_y_q8, normal_z_q8 : INTEGER;
+        light : light_t
+    ) RETURN INTEGER IS
+        VARIABLE dot_q8 : INTEGER;
+    BEGIN
+        dot_q8 := (
+            (normal_x_q8 * light.x_q8) +
+            (normal_y_q8 * light.y_q8) +
+            (normal_z_q8 * light.z_q8) +
+            128
+        ) / 256;
+        RETURN shade_from_dot_q8(dot_q8, light);
+    END FUNCTION;
+
     FUNCTION clamp_scale_q8(scale_q8 : INTEGER) RETURN INTEGER IS
     BEGIN
         IF scale_q8 < 1 THEN
@@ -147,21 +180,11 @@ PACKAGE BODY RENDERING_PIPELINE IS
         RETURN is_point_in_triangle(px, py, x1, y1, x2, y2, x3, y3);
     END FUNCTION;
 
-    FUNCTION cube_face_id(
+    FUNCTION cube_shade_q8(
         px, py : INTEGER;
-        cube : cube_t
+        cube : cube_t;
+        light : light_t
     ) RETURN INTEGER IS
-        TYPE face_triangle_t IS RECORD
-            x1 : INTEGER;
-            y1 : INTEGER;
-            x2 : INTEGER;
-            y2 : INTEGER;
-            x3 : INTEGER;
-            y3 : INTEGER;
-            face_id : INTEGER;
-        END RECORD;
-        TYPE face_triangle_array_t IS ARRAY (0 TO 5) OF face_triangle_t;
-
         VARIABLE local_px : INTEGER;
         VARIABLE local_py : INTEGER;
         CONSTANT half_side : INTEGER := cube.side_length / 2;
@@ -185,14 +208,14 @@ PACKAGE BODY RENDERING_PIPELINE IS
         CONSTANT b2_y : INTEGER := f2_y + depth_y;
 
         -- Visible-face triangle list: 2 front + 2 right + 2 top.
-        -- Ordering encodes face priority for overlap resolution.
-        CONSTANT visible_face_triangles : face_triangle_array_t := (
-            0 => (x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => f2_x, y3 => f2_y, face_id => 1),
-            1 => (x1 => f0_x, y1 => f0_y, x2 => f2_x, y2 => f2_y, x3 => f3_x, y3 => f3_y, face_id => 1),
-            2 => (x1 => f1_x, y1 => f1_y, x2 => f2_x, y2 => f2_y, x3 => b2_x, y3 => b2_y, face_id => 2),
-            3 => (x1 => f1_x, y1 => f1_y, x2 => b2_x, y2 => b2_y, x3 => b1_x, y3 => b1_y, face_id => 2),
-            4 => (x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => b1_x, y3 => b1_y, face_id => 3),
-            5 => (x1 => f0_x, y1 => f0_y, x2 => b1_x, y2 => b1_y, x3 => b0_x, y3 => b0_y, face_id => 3)
+        -- This record can be reused by future meshes (e.g., torus).
+        CONSTANT visible_face_triangles : triangle_scene_t(0 TO 5) := (
+            0 => (x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => f2_x, y3 => f2_y, normal_x_q8 =>   0, normal_y_q8 =>   0, normal_z_q8 => 256),
+            1 => (x1 => f0_x, y1 => f0_y, x2 => f2_x, y2 => f2_y, x3 => f3_x, y3 => f3_y, normal_x_q8 =>   0, normal_y_q8 =>   0, normal_z_q8 => 256),
+            2 => (x1 => f1_x, y1 => f1_y, x2 => f2_x, y2 => f2_y, x3 => b2_x, y3 => b2_y, normal_x_q8 => 256, normal_y_q8 =>   0, normal_z_q8 =>   0),
+            3 => (x1 => f1_x, y1 => f1_y, x2 => b2_x, y2 => b2_y, x3 => b1_x, y3 => b1_y, normal_x_q8 => 256, normal_y_q8 =>   0, normal_z_q8 =>   0),
+            4 => (x1 => f0_x, y1 => f0_y, x2 => f1_x, y2 => f1_y, x3 => b1_x, y3 => b1_y, normal_x_q8 =>   0, normal_y_q8 => 256, normal_z_q8 =>   0),
+            5 => (x1 => f0_x, y1 => f0_y, x2 => b1_x, y2 => b1_y, x3 => b0_x, y3 => b0_y, normal_x_q8 =>   0, normal_y_q8 => 256, normal_z_q8 =>   0)
         );
     BEGIN
         local_px := cube.center_x + inv_scale_delta_q8(px - cube.center_x, cube.scale_x_q8);
@@ -208,27 +231,17 @@ PACKAGE BODY RENDERING_PIPELINE IS
                 visible_face_triangles(tri_idx).x3,
                 visible_face_triangles(tri_idx).y3
             ) THEN
-                RETURN visible_face_triangles(tri_idx).face_id;
+                RETURN shade_from_normal_q8(
+                    visible_face_triangles(tri_idx).normal_x_q8,
+                    visible_face_triangles(tri_idx).normal_y_q8,
+                    visible_face_triangles(tri_idx).normal_z_q8,
+                    light
+                );
             END IF;
         END LOOP;
 
         -- Hidden faces (back/left/bottom) are intentionally not classified.
-        -- Restricting to visible faces keeps per-face shading while reducing
-        -- overlap ambiguity that can present as streaking on hardware.
-        RETURN 0;
-    END FUNCTION;
-
-    FUNCTION face_shade_q8(face_id : INTEGER; light : light_t) RETURN INTEGER IS
-        VARIABLE dot_q8 : INTEGER;
-    BEGIN
-        CASE face_id IS
-            WHEN 1 => dot_q8 := light.z_q8;
-            WHEN 2 => dot_q8 := light.x_q8;
-            WHEN 3 => dot_q8 := light.y_q8;
-            WHEN OTHERS => dot_q8 := 0;
-        END CASE;
-
-        RETURN shade_from_dot_q8(dot_q8, light);
+        RETURN -1;
     END FUNCTION;
 
     FUNCTION render_lit_cube_pixel(
@@ -236,15 +249,13 @@ PACKAGE BODY RENDERING_PIPELINE IS
         cube : cube_t;
         light : light_t
     ) RETURN color_t IS
-        VARIABLE face_id  : INTEGER;
         VARIABLE shade_q8 : INTEGER;
     BEGIN
-        face_id := cube_face_id(x, y, cube);
-        IF face_id = 0 THEN
+        shade_q8 := cube_shade_q8(x, y, cube, light);
+        IF shade_q8 < 0 THEN
             RETURN TRANSPARENT;
         END IF;
 
-        shade_q8 := face_shade_q8(face_id, light);
         RETURN scale_color(cube.color, shade_q8);
     END FUNCTION;
 
