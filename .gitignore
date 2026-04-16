@@ -26,6 +26,7 @@ testbench
 timing
 .qsys_edit
 .github
+RENDERING_PIPELINE.md
 
 # ignore Quartus II generated files
 *_generation_script*

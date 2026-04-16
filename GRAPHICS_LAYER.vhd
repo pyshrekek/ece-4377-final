@@ -24,6 +24,8 @@ entity graphics_layer is
     vert_sync    : in    std_logic;
     show_sphere  : in    std_logic;
     show_cube    : in    std_logic;
+    cycle_cube_color   : in    std_logic;
+    cycle_sphere_color : in    std_logic;
     -- Pan/zoom controls (driven by BUTTON_CONTROL)
     x_offset     : in    integer range -320 to 320;
     y_offset     : in    integer range -240 to 240;
@@ -41,8 +43,12 @@ architecture behavioral of graphics_layer is
   signal pixel_color : color_t;
   constant SCREEN_CX : integer := 320;
   constant SCREEN_CY : integer := 240;
+  constant RGB_CYCLE_MAX  : integer := 767;
+  constant RGB_CYCLE_STEP : integer := 2;
 
   constant ROT_NONE_MAT   : mat4 := IDENTITY_MAT4;
+  signal cube_color_phase   : integer range 0 to RGB_CYCLE_MAX := 0;
+  signal sphere_color_phase : integer range 0 to RGB_CYCLE_MAX := 0;
 
   function div_round_signed_256(num : integer) return integer is
   begin
@@ -56,6 +62,64 @@ architecture behavioral of graphics_layer is
   function q8_mul_int(coeff : fp; val : integer) return integer is
   begin
     return div_round_signed_256(to_integer(coeff) * val);
+  end function;
+
+  function clamp_u8_local(v : integer) return integer is
+  begin
+    if v < 0 then
+      return 0;
+    elsif v > 255 then
+      return 255;
+    end if;
+    return v;
+  end function;
+
+  function next_rgb_phase(phase : integer) return integer is
+    variable p : integer;
+  begin
+    p := phase + RGB_CYCLE_STEP;
+    if p > RGB_CYCLE_MAX then
+      return p - (RGB_CYCLE_MAX + 1);
+    end if;
+    return p;
+  end function;
+
+  function rgb_cycle_color(phase : integer) return color_t is
+    variable p : integer;
+    variable t : integer;
+    variable r : integer;
+    variable g : integer;
+    variable b : integer;
+  begin
+    if phase < 0 then
+      p := 0;
+    elsif phase > RGB_CYCLE_MAX then
+      p := RGB_CYCLE_MAX;
+    else
+      p := phase;
+    end if;
+
+    if p < 256 then
+      r := 255 - p;
+      g := p;
+      b := 0;
+    elsif p < 512 then
+      t := p - 256;
+      r := 0;
+      g := 255 - t;
+      b := t;
+    else
+      t := p - 512;
+      r := t;
+      g := 0;
+      b := 255 - t;
+    end if;
+
+    return (
+      r => std_logic_vector(to_unsigned(clamp_u8_local(r), 8)),
+      g => std_logic_vector(to_unsigned(clamp_u8_local(g), 8)),
+      b => std_logic_vector(to_unsigned(clamp_u8_local(b), 8))
+    );
   end function;
 
   function rotated_x(px, py : integer; m : mat4) return integer is
@@ -117,13 +181,29 @@ begin
   x <= to_integer(unsigned(pixel_column));
   y <= to_integer(unsigned(pixel_row));
 
+  color_cycle_proc : process (vert_sync) is
+  begin
+    if rising_edge(vert_sync) then
+      if cycle_cube_color = '1' then
+        cube_color_phase <= next_rgb_phase(cube_color_phase);
+      end if;
+
+      if cycle_sphere_color = '1' then
+        sphere_color_phase <= next_rgb_phase(sphere_color_phase);
+      end if;
+    end if;
+  end process color_cycle_proc;
+
   -- Render all cubes in SCENE with flat shading from SCENE_LIGHT.
   -- Front-to-back priority: index 0 is drawn on top.
   -- Walk back-to-front (highest index first) so index 0 overwrites last.
   -- Spheres are then composited with the same per-index priority.
   -- zoom_level and x/y_offset are applied before each draw call so
   -- the scene can be panned and zoomed at run-time via BUTTON_CONTROL.
-  render_proc : process (x, y, show_sphere, show_cube, x_offset, y_offset, zoom_level) is
+  render_proc : process (
+    x, y, show_sphere, show_cube, cycle_cube_color, cycle_sphere_color,
+    cube_color_phase, sphere_color_phase, x_offset, y_offset, zoom_level
+  ) is
 
     -- Scale factors derived from zoom_level:
     --   zoom_level 0 => 0.25x (scale_num=1, scale_den=4)
@@ -156,6 +236,9 @@ begin
     if show_cube = '1' then
       for i in SCENE'reverse_range loop
         scaled_cube := transform_cube(SCENE(i), ROT_NONE_MAT, scale_num, scale_den, x_offset, y_offset);
+        if cycle_cube_color = '1' then
+          scaled_cube.color := rgb_cycle_color(cube_color_phase);
+        end if;
 
         hit := render_lit_cube_pixel(x, y, scaled_cube, SCENE_LIGHT);
 
@@ -169,6 +252,9 @@ begin
     if show_sphere = '1' then
       for i in SCENE_SPHERES'reverse_range loop
         scaled_sphere := transform_sphere(SCENE_SPHERES(i), ROT_NONE_MAT, scale_num, scale_den, x_offset, y_offset);
+        if cycle_sphere_color = '1' then
+          scaled_sphere.color := rgb_cycle_color(sphere_color_phase);
+        end if;
 
         if SPHERE_WIREFRAME_MODE then
           hit := render_wireframe_sphere_pixel(x, y, scaled_sphere, 2);
