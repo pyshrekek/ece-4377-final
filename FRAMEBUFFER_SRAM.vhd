@@ -26,7 +26,6 @@ entity framebuffer_sram is
 
     render_row     : out std_logic_vector(9 downto 0);
     render_col     : out std_logic_vector(9 downto 0);
-    frame_swap_tick : out std_logic;
     render_red     : in  std_logic_vector(7 downto 0);
     render_green   : in  std_logic_vector(7 downto 0);
     render_blue    : in  std_logic_vector(7 downto 0);
@@ -83,7 +82,6 @@ architecture rtl of framebuffer_sram is
   signal disp_r           : std_logic_vector(7 downto 0) := (others => '0');
   signal disp_g           : std_logic_vector(7 downto 0) := (others => '0');
   signal disp_b           : std_logic_vector(7 downto 0) := (others => '0');
-  signal frame_swap_tick_r : std_logic := '0';
 
   constant MAX_COL_U10    : unsigned(9 downto 0) := to_unsigned(WIDTH - 1, 10);
   constant MAX_ROW_U10    : unsigned(9 downto 0) := to_unsigned(HEIGHT - 1, 10);
@@ -122,7 +120,6 @@ begin
   display_red   <= disp_r;
   display_green <= disp_g;
   display_blue  <= disp_b;
-  frame_swap_tick <= frame_swap_tick_r;
 
   sram_addr <= sram_addr_r;
   sram_ce_n <= '0';
@@ -153,7 +150,6 @@ begin
       display_col_s1 <= display_col;
       display_col_s2 <= display_col_s1;
 
-      frame_swap_tick_r <= '0';
       disp_row_u := unsigned(display_row_s2);
       disp_col_u := unsigned(display_col_s2);
       in_bounds := (disp_col_u <= MAX_COL_U10) and (disp_row_u <= MAX_ROW_U10);
@@ -169,7 +165,6 @@ begin
           render_x    <= 0;
           render_y    <= 0;
           render_done <= '0';
-          frame_swap_tick_r <= '1';
         end if;
       end if;
       vsync_prev <= vert_sync_s2;

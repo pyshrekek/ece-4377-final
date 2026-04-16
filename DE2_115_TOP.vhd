@@ -118,14 +118,7 @@ ARCHITECTURE structural OF DE2_115_TOP IS
      COMPONENT GRAPHICS_LAYER
         PORT (
             pixel_row, pixel_column : IN  STD_LOGIC_VECTOR(9 DOWNTO 0);
-            vert_sync               : IN  STD_LOGIC;
-            anim_tick               : IN  STD_LOGIC;
             show_sphere, show_cube  : IN  STD_LOGIC;
-            cycle_cube_color        : IN  STD_LOGIC;
-            cycle_sphere_color      : IN  STD_LOGIC;
-            rotate_cube_x           : IN  STD_LOGIC;
-            rotate_cube_y           : IN  STD_LOGIC;
-            rotate_cube_z           : IN  STD_LOGIC;
             x_offset                : IN  INTEGER RANGE -320 TO 320;
             y_offset                : IN  INTEGER RANGE -240 TO 240;
             zoom_level              : IN  INTEGER RANGE 0 TO 4;
@@ -142,7 +135,6 @@ ARCHITECTURE structural OF DE2_115_TOP IS
             display_col    : IN  STD_LOGIC_VECTOR(9 DOWNTO 0);
             render_row     : OUT STD_LOGIC_VECTOR(9 DOWNTO 0);
             render_col     : OUT STD_LOGIC_VECTOR(9 DOWNTO 0);
-            frame_swap_tick : OUT STD_LOGIC;
             render_red     : IN  STD_LOGIC_VECTOR(7 DOWNTO 0);
             render_green   : IN  STD_LOGIC_VECTOR(7 DOWNTO 0);
             render_blue    : IN  STD_LOGIC_VECTOR(7 DOWNTO 0);
@@ -188,14 +180,11 @@ ARCHITECTURE structural OF DE2_115_TOP IS
     SIGNAL pixel_column_int: STD_LOGIC_VECTOR(9 DOWNTO 0); -- display scan coordinate
     SIGNAL render_row_int  : STD_LOGIC_VECTOR(9 DOWNTO 0); -- off-screen render coordinate
     SIGNAL render_col_int  : STD_LOGIC_VECTOR(9 DOWNTO 0); -- off-screen render coordinate
-    SIGNAL render_frame_tick_int : STD_LOGIC := '0';
 
     -- Pan / zoom state (driven by BUTTON_CONTROL)
     -- SW(0): show_sphere  SW(1): show_cube  (unchanged)
     -- KEY(0-3): move right/left/down/up
     -- SW(2): zoom in  SW(3): zoom out
-    -- SW(4): cube RGB color cycle  SW(5): sphere RGB color cycle
-    -- SW(15): cube rotate around X  SW(16): around Y  SW(17): around Z
     SIGNAL x_offset_int    : INTEGER RANGE -320 TO 320 := 0;
     SIGNAL y_offset_int    : INTEGER RANGE -240 TO 240 := 0;
     SIGNAL zoom_level_int  : INTEGER RANGE 0 TO 4      := 2;
@@ -249,7 +238,6 @@ BEGIN
         display_col    => pixel_column_int,
         render_row     => render_row_int,
         render_col     => render_col_int,
-        frame_swap_tick => render_frame_tick_int,
         render_red     => render_red_int,
         render_green   => render_green_int,
         render_blue    => render_blue_int,
@@ -268,15 +256,8 @@ BEGIN
     U2 : GRAPHICS_LAYER PORT MAP (
         pixel_row    => render_row_int,
         pixel_column => render_col_int,
-        vert_sync    => vert_sync_int,
-        anim_tick    => render_frame_tick_int,
         show_sphere  => SW(0),
         show_cube    => SW(1),
-        cycle_cube_color   => SW(4),
-        cycle_sphere_color => SW(5),
-        rotate_cube_x      => SW(15),
-        rotate_cube_y      => SW(16),
-        rotate_cube_z      => SW(17),
         x_offset     => x_offset_int,
         y_offset     => y_offset_int,
         zoom_level   => zoom_level_int,
